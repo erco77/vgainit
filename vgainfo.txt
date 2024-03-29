@@ -1,0 +1,325 @@
+ I made the info in this document by referencing other sources, and in
+ some cases pulling text verbatim.
+
+ I converted diagrams to ascii art so it could be read on an 80x25 MS-DOS
+ screen, and used this info during development.   -erco 3/28/2024
+
+
+			**	**	**
+			**	**	**
+
+
+IMPORTANT NOTES:
+
+     > Typical VGA uses /full frames/ (non-interlaced)
+
+     > The CRT Controller's "Protect" bit can cause a lot of
+       confusion if you don't first turn it off when trying
+       to program the vert/horiz registers..! If it's on,
+       all writing to those registers is IGNORED!
+
+
+			*	*	*
+
+
+                                         backporch    frontporch
+                                          |    sync     |
+                                          |     |       |
+          <---- Active Display ---->    <-+--> <---> <--+->
+
+         |AAAAAAAAAAAAAAAAAAAAAAAAAA|RR|HBLANK|HSYNC|HBLANK|LL|
+         |AAAAAAAAAAAAAAAAAAAAAAAAAA|RR|HBLANK|HSYNC|HBLANK|LL|
+         |AAAAAAAAAAAAAAAAAAAAAAAAAA|RR|HBLANK|HSYNC|HBLANK|LL|
+         |AAAAAAAAAAAAAAAAAAAAAAAAAA|RR|HBLANK|HSYNC|HBLANK|LL|
+         |AAAAAAAAAAAAAAAAAAAAAAAAAA|RR|HBLANK|HSYNC|HBLANK|LL|
+         |AAAAAAAAAAAAAAAAAAAAAAAAAA|RR|HBLANK|HSYNC|HBLANK|LL|
+         |AAAAAAAAAAAAAAAAAAAAAAAAAA|RR|HBLANK|HSYNC|HBLANK|LL|
+         |AAAAAAAAAAAAAAAAAAAAAAAAAA|RR|HBLANK|HSYNC|HBLANK|LL|
+         |AAAAAAAAAAAAAAAAAAAAAAAAAA|RR|HBLANK|HSYNC|HBLANK|LL|
+         |AAAAAAAAAAAAAAAAAAAAAAAAAA|RR|HBLANK|HSYNC|HBLANK|LL|
+         |AAAAAAAAAAAAAAAAAAAAAAAAAA|RR|HBLANK|HSYNC|HBLANK|LL|
+         |BBBBBBBBBBBBBBBBBBBBBBBBBBBBB|HBLANK|HSYNC|HBLANK|LL|
+         |VBLANK-VBLANK-VBLANK-VBLANK-VBLANK-VBLANK-VBLANK-VBL|
+         |VSYNC-VSYNC-VSYNC-VSYNC-VSYNC-VSYNC-VSYNC-VSYNC-VSYN|
+         |VBLANK-VBLANK-VBLANK-VBLANK-VBLANK-VBLANK-VBLANK-VBL|
+         |TTTTTTTTTTTTTTTTTTTTTTTTTTTTT|HBLANK|HSYNC|HBLANK|LL|
+
+ A=active display
+ R=right border,  L=left border
+ B=bottom border, T=top border
+
+ The HBLANK before HSYNC is horizontal sync's "front porch"
+ The HBLANK after  HSYNC is horizontal sync's "back porch"
+
+ The VBLANK above VSYNC is vertical sync's "front porch"
+ The VBLANK below VSYNC is vertical sync's "back porch"
+
+ The VGA's pixel counters are all referenced relative to 
+ the top/left corner of the active display area, which is 0,0.
+
+			*	*	*
+
+	--------------------------------------------------
+	The following text excerpted and paraphrased from:
+	http://www.osdever.net/FreeVGA/vga/crtcreg.htm
+	--------------------------------------------------
+
+CRTC REGISTERS
+==============
+
+Horizontal Total: (Index=0x00)
+---------------------------------
+    Specify the number of character clocks per scan line.
+    Along with dot rate, controls the horizontal refresh rate of the VGA
+    by specifying amount of time one scan line takes.  This isn't the actual number
+    of character clocks: due to timing factors of VGA hardware (compatibility)
+    the actual horizontal total is 5 character clocks more than the value stored in this field.
+    So subtract 5 from the desired horizontal total before programming it into this register.
+
+
+End Horizontal Display: (Index 01h)
+-----------------------------------
+    Controls the point that the sequencer stops outputting pixel values
+    from display memory and sequences pixel value specified by Overscan
+    Palette Index for remainder of scan line.  The overscan begins the
+    character clock after the value programmed here.  Register should be
+    programmed with number of character clocks in the active display - 1.
+    (Active display may be affected by the Display Enable Skew field,
+    but it's usually disabled-erco)
+
+
+End Horizontal Blanking Register (Index 03h)
+--------------------------------------------
+ ______________________________________________________________
+|    7     |     6     |    5    |  4  |  3  |  2  |  1  |  0  |
+|__________|___________|_________|_____|_____|_____|_____|_____|
+|   EVRA   | Display Enable Skew |   End Horizontal Blanking   |
+|__________|_____________________|_____________________________|
+
+    EVRA (Enable Vertical Retrace Access)
+    -------------------------------------
+    This was used by IBM EGA to provide access to light pen values.
+    The VGA lacks light pen input, so this is normally forced to 1.
+    (Always writing it as 1 may be good for compatibility.)
+
+    Display Enable Skew
+    -------------------
+    Just set this to 0 always. Not worth describing.
+
+    End Horizontal Blanking
+    -----------------------
+    This contains 5 bits (4-0) which specifies the end of the horizontal blanking period.
+    Bit 5 is located after the period has begun as specified by the Start Horizontal Blanking field,
+    the 6-bit value of this field is compared against the lower 6 bits of the character clock.
+    When a match occurs, the horizontal blanking signal is disabled.  This provides from 1 to 64
+    character clocks although some implementations may match in the character clock specified
+    by the Start Horizontal Blanking field, in which case the range is 0 to 63.  Note if blanking
+    extends past the end of the scan line, it will end on the first match of this field on the next scan line.
+
+
+Start Horizontal Retrace Register (Index 04h)
+---------------------------------------------
+All 8 bits specify the character clock at which the VGA begins sending the horiz sync pulse, signaling monitor
+to retrace back to the left side of the screen. End of this pulse is controlled by "End Horizontal Retrace".
+Pulse may appear anywhere in the scan line, as well as set to a position beyond "Horizontal Total" field
+which effectively disables the horizontal synchronization pulse.
+
+
+End Horizontal Retrace Register (Index 05h)
+-------------------------------------------
+______________________________________________________________
+|    7     |     6     |    5    |  4  |  3  |  2  |  1  |  0  |
+|__________|___________|_________|_____|_____|_____|_____|_____|
+|   EHB5   | Horiz. Retrace Skew |   End Horizontal Retrace    |
+|__________|_____________________|_____________________________|
+
+     EHB5 -- End Horizontal Blanking (bit 5)
+     Contains bit 5 of "End Horizontal Blanking" field.
+
+     Horizontal Retrace Skew
+     Set to 0 normally. Exception set to 1 for 40 column mode.
+
+     End Horizontal Retrace
+     Specifies end of the horizontal retrace period, which begins at character clock specified
+     in "Start Horizontal Retrace". Horizontal retrace signal is enabled until the lower 5 bits
+     of character counter match the 5 bits of this field. This provides for a horizontal retrace
+     period from 1 to 32 character clocks. Note some implementations may match immediately
+     instead of 32 clocks away, making the effective range 0 to 31 character clocks.
+
+
+Vertical Retrace End (Index 11h)
+--------------------------------
+ _________________________________________________________
+|    7    |     6     |  5  |  4  |  3  |  2  |  1  |  0  |
+|_________|___________|_____|_____|_____|_____|_____|_____|
+| Protect | Bandwidth |     |     |  Vert Retrace End     |
+|_________|___________|_____|_____|_______________________|
+
+    Protect
+    -------
+    When set to 1, CRTC register indexes 00h-07h ignore write access, with the exception
+    of bit 4 of the Overflow Register, which holds bit 8 of the Line Compare field.
+    (This field protects video timing registers from being changed by old programs written
+    for earlier graphics chipsets that attempt to program these registers with values
+    unsuitable for VGA timings)
+
+    Bandwidth -- Memory Refresh Bandwidth
+    -------------------------------------
+    Most chipsets include registers that control memory, bus, or other timings not related to video output.
+    Most ignore this value; however, IBM VGA adapters do utilize it and thus for compatibility with these
+    chipsets this field should be programmed.  IBM VGA hardware uses this to control the number of DRAM refresh
+    cycles per scan line. The three refresh cycles per scanline is appropriate for the IBM VGA horizontal freq
+    of approximately 31.5 kHz.  For horizontal frequencies greater than this, this setting will work as DRAM
+    will be refreshed more often.  However, refreshing not often enough for the DRAM can cause memory loss.
+    Thus slower than 31.5 kHz the *five refresh cycle setting should be used*. At which particular point this
+    should occur, would require better knowledge of the IBM VGA's schematics than I have available.
+    According to IBM documentation, "Selecting five refresh cycles allows use of the VGA chip with 15.75 kHz
+    displays." which isn't really enough to go by unless the mode you define has a 15.75 kHz horiz frequency.
+
+    Vertical Retrace End
+    --------------------
+    Determines end of the vertical retrace pulse, and thus its length.  This field contains lower four bits
+    of vertical scanline counter at the beginning of the scanline immediately after the last scanline where
+    vertical retrace signal is asserted.
+
+
+Offset Register (Index 13h)
+---------------------------
+    Specifies address difference between consecutive scan lines or two lines of characters.
+    Beginning with second scan line, the starting scan line is increased by twice the value
+    in this register, multiplied by the current memory address size (byte = 1, word = 2,
+    double-word = 4) each line. For text modes the following equation is used:
+        Offset = Width / ( MemoryAddressSize * 2 )
+    ..and in graphics mode, the following equation is used:
+        Offset = Width / ( PixelsPerAddress * MemoryAddressSize * 2 )
+    ..where:
+        > PixelsPerAddress  -- number of pixels stored in one display memory address
+        > MemoryAddressSize -- current memory addressing size
+        > Width             -- width in pixels of the screen
+    This register can be modified to provide a virtual resolution, in which case
+    Width is the width in pixels of the virtual screen.
+
+
+VGA "Misc Output Register"
+--------------------------
+    Mask Value
+    0xcc 0x44
+    ---- ----
+      1   0 -> 7: 0=positive vsync, 1=negative vsync pulse  \__ sync
+      1   1 -> 6: 0=positive hsync, 1=negative hsync pulse  /   polarity
+      0   0    5: 0=low page, 1=high page
+      0   0    4: unused
+      1   0 -> 3: \__ clock select: 00=25.175Mhz clock (320/640 pixel width modes)
+      1   1 -> 2: /                 01=28.322MHz clock (360/720 pixel width modes)
+      0   0    1: display memory access: 0=disable, 1=enable
+      0   0    0: 0=CRT controller address is 0x03Bx, input status is 0x03BA (monochrome adapter)
+		  1=CRT controller address is 0x03Dx, input status is 0x03DA (color graphics adapter)
+
+
+    According to:
+    https://electronics.stackexchange.com/questions/532192/intel-de1-soc-vga-controller-in-vhdl
+    ..both hsync and vsync are negative polarity. In actual practice I found my LCD monitors
+    worked fine whether h/vsync pulses were positive or negative.
+
+    I found the 28.322MHz clock setting is what most text modes need, and that works for
+    both 70Hz and 60Hz refresh. What matters is the number of scanlines and horiz total
+    to affect the refresh rate.
+
+
+				*	*	*
+
+
+	------------------------------------------------------
+	The following text was paraphrased and excerpted from:
+	http://www.osdever.net/FreeVGA/vga/seqreg.htm
+	------------------------------------------------------
+
+SEQUENCER REGISTERS
+===================
+
+Sequencer Registers: "Reset Register" (Index 00h)
+-------------------------------------------------
+ _______________________________________________
+|  7  |  6  |  5  |  4  |  3  |  2  |  1  |  0  |
+|_____|_____|_____|_____|_____|_____|_____|_____|
+|                                   | SR  |  AR |
+|___________________________________|_____|_____|
+
+    SR -- Sychnronous Reset
+    -----------------------
+    When set to 0, this bit commands the sequencer to synchronously clear and halt.
+    Bits 1 and 0 must be 1 to allow the sequencer to operate. To prevent the loss of data,
+    bit 1 must be set to 0 during the active display interval before changing the clock selection.
+    The clock is changed through the Clocking Mode register or the Miscellaneous Output register."
+
+    AR -- Asynchronous Reset
+    -----------------------
+    When set to 0, this bit commands the sequencer to asynchronously clear and halt.
+    Resetting the sequencer with this bit can cause loss of video data.
+
+
+Sequencer Registers: "Clocking Mode Register" (Index 01h)
+---------------------------------------------------------
+ _________________________________________________
+|  7  |  6  |  5  |  4  |  3  |  2  |  1  |   0   |
+|_____|_____|_____|_____|_____|_____|_____|_______|
+|           |  SD |  S4 | DCR | SLR |     | 9/8DM |
+|___________|_____|_____|_____|_____|_____|_______|
+
+    SD -- Screen Disable
+    --------------------
+    Set to 1, this turns off the display and assigns maximum memory bandwidth to the system.
+    Although display is blanked, synchronization pulses are maintained.
+    This can be used for rapid full-screen updates.
+
+    S4 -- Shift Four Enable
+    -----------------------
+    When "Shift 4" and "Shift Load" are set to 0, the video serializers are loaded every character clock.
+    When "Shift 4" is set to 1, the video serializers are loaded every forth character clock, useful when
+    32 bits are fetched per cycle and chained together in the shift registers.
+
+    DCR - Dot Clock Rate
+    --------------------
+    When set to 0, this bit selects normal dot clocks derived from the sequencer master clock input.
+    When set to 1, master clock will be divided by 2 to generate the dot clock. All other timings
+    are affected because they are derived from the dot clock. The dot clock divided by 2 is used for
+    320 and 360 horizontal PEL modes.
+
+    SLR - Shift/Load Rate
+    ---------------------
+    When this bit and bit 4 are set to 0, the video serializers are loaded every character clock.
+    When this bit is set to 1, the video serializers are loaded every other character clock,
+    which is useful when 16 bits are fetched per cycle and chained together in the shift registers.
+    The Type 2 video behaves as if this bit is set to 0; therefore, programs should set it to 0.
+
+    9/8DM -- 9/8 Dot Mode
+    ---------------------
+    This field is used to select whether a character is 8 or 9 dots wide.
+    This can be used to select between 720 and 640 pixel modes (or 360 and 320) and is also used
+    to provide 9 bit wide character fonts in text mode. The possible values for this field are:
+        0 - Selects 9 dots per character.
+        1 - Selects 8 dots per character.
+
+
+			*	*	*
+
+
+	-------------------------------------------------------------
+	The following is excerpted from svgalib's "timing.c" file:
+	-------------------------------------------------------------
+
+  PixClk  Hdisplay            VDisplay
+    |     |    HSyncStart     |    VSyncStartEnd
+    |     |    |    HSyncEnd  |    |    VSyncEnd
+    |     |    |    |    HTotal    |    |    VTotal
+    |     |    |    |    |    |    |    |    |
+    |     |    |    |    |    |    |    |    |
+    |     |    |    |    |    |    |    |    |
+ 640x400 at 70 Hz, 31.5 kHz hsync  |    |    |
+  {25175, 640, 664, 760, 800, 400, 409, 411, 450..
+    |     |    |    |    |    |    |    |    |
+    |     |    |    |    |    |    |    |    |
+ 640x480 at 60 Hz, 31.5 kHz hsync  |    |    |
+  {25175, 640, 664, 760, 800, 480, 491, 493, 525..
+
+
