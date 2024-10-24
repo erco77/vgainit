@@ -10,7 +10,7 @@ a bit to adjust the numbers.
 An important thing I added was to disable the "Protect" bit, which was preventing
 me from changing anything. (It's purpose is to prevent old tools not familiar with
 modern VGA programming from screwing up CRT monitors and VGA hardware with bad or
-impossible settings.
+impossible settings.)
 
 
 
